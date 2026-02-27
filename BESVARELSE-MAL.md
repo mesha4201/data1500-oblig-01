@@ -418,7 +418,11 @@ En ulempe med å bruke VIEW for autorisasjon er at sikkerheten ligger i applikas
 
 **Totalt antall utleier per år:**
 
-100000 + 20000 + 1500 = 121500 utleier
+Høysesong: 5 × 20000 = 100000
+Mellomsesong: 4 × 5000 = 20000
+Lavsesong: 3 × 500 = 1500
+
+Totalt: 100000 + 20000 + 1500 = 121500 utleier per år
 
 **Estimat for lagringskapasitet:**
 
@@ -463,17 +467,14 @@ Hvis adressen til "Sentrum Stasjon" endres, må alle rader med denne stasjonen o
 
 **Problem 3: Oppdateringsanomalier**
 
-Oppdateringsanomalier
+Oppdateringsanomalier:
+- Hvis Kari Olsen endrer e-postadresse, må alle rader hvor hun forekommer oppdateres. Hvis én rad glemmes, oppstår inkonsistens.
 
-Hvis Kari Olsen endrer e-postadresse, må alle rader hvor hun forekommer oppdateres. Hvis én rad glemmes, oppstår inkonsistens.
+Innsettingsanomalier:
+- Det er vanskelig å registrere en ny kunde uten at kunden samtidig har en utleie. CSV-filen beskriver kun utleier, ikke separate kunder eller sykler.
 
-Innsettingsanomalier
-
-Det er vanskelig å registrere en ny kunde uten at kunden samtidig har en utleie. CSV-filen beskriver kun utleier, ikke separate kunder eller sykler.
-
-Sletteanomalier
-
-Hvis vi sletter den eneste raden der for eksempel Anna Nilsen forekommer, mister vi samtidig all informasjon om henne.
+Sletteanomalier:
+- Hvis vi sletter den eneste raden der for eksempel Anna Nilsen forekommer, mister vi samtidig all informasjon om henne.
 
 **Fordeler med en indeks:**
 
@@ -677,12 +678,12 @@ Jeg har også lært at god normalisering gjør systemet mer robust og reduserer 
 
 **Plassering av SQL-spørringer:**
 
-[Bekreft at du har lagt SQL-spørringene i `test-scripts/queries.sql`]
-
+Spørringene ble kjørt med:
+docker compose exec -T postgres psql -U admin -d oblig01 < test-scripts/queries.sql
 
 **Eventuelle feil og rettelser:**
 
-[Skriv ditt svar her - hvis noen tester feilet, forklar hva som var feil og hvordan du rettet det]
+Alle spørringer kjørte uten feil og ga forventet resultat.
 
 ---
 
