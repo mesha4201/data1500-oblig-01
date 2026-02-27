@@ -286,7 +286,7 @@ Det var ikke nødvendig å gjøre justeringer for å oppnå 3NF, da datamodellen
 
 **Plassering av SQL-skript:**
 
-[Bekreft at du har lagt SQL-skriptet i `init-scripts/01-init-database.sql`]
+SQL-skriptet er lagt i mappen init-scripts/01-init-database.sql i prosjektets rotmappe, i henhold til oppgaveteksten.
 
 **Antall testdata:**
 
@@ -302,7 +302,13 @@ Det var ikke nødvendig å gjøre justeringer for å oppnå 3NF, da datamodellen
 
 **Dokumentasjon av vellykket kjøring:**
 
-[Skriv ditt svar her - f.eks. skjermbilder eller output fra terminalen som viser at databasen ble opprettet uten feil]
+Jeg startet PostgreSQL-containeren ved hjelp av kommandoen:
+docker compose up -d
+
+Deretter kjørte jeg initialiseringsskriptet mot databasen oblig01 med følgende kommando:
+docker compose exec -T postgres psql -U admin -d oblig01 < init-scripts/01-init-database.sql
+
+Skriptet ble kjørt uten feil. Terminalen viste at tabeller ble opprettet (CREATE TABLE), testdata ble satt inn (INSERT), og transaksjonen ble avsluttet med COMMIT. Til slutt ble meldingen "Database initialisert!" vist, som bekreftelse på at databasen ble opprettet korrekt.
 
 **Spørring mot systemkatalogen:**
 
@@ -317,7 +323,12 @@ ORDER BY table_name;
 **Resultat:**
 
 ```
-[Skriv resultatet av spørringen her - list opp alle tabellene som ble opprettet]
+kunde
+kunde_login_map
+las
+stasjon
+sykkel
+utleie
 ```
 
 ---
@@ -329,20 +340,40 @@ ORDER BY table_name;
 **SQL for å opprette rolle:**
 
 ```sql
-[Skriv din SQL-kode for å opprette rollen 'kunde' her]
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kunde') THEN
+    CREATE ROLE kunde NOINHERIT;
+  END IF;
+END$$;
 ```
 
 **SQL for å opprette bruker:**
 
 ```sql
-[Skriv din SQL-kode for å opprette brukeren 'kunde_1' her]
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kunde_1') THEN
+    CREATE USER kunde_1 WITH PASSWORD 'kunde_1_pass';
+    GRANT kunde TO kunde_1;
+  END IF;
+END$$;
 ```
 
 **SQL for å tildele rettigheter:**
 
 ```sql
-[Skriv din SQL-kode for å tildele rettigheter til rollen her]
+GRANT CONNECT ON DATABASE oblig01 TO kunde;
+GRANT USAGE ON SCHEMA public TO kunde;
+
+-- Kunden skal kunne lese “offentlig” info om systemet
+GRANT SELECT ON stasjon, las, sykkel TO kunde;
+
+-- Kunden skal IKKE kunne lese alle utleier direkte
+REVOKE ALL ON utleie FROM kunde;
 ```
+
+Rollen kunde ble opprettet for å samle rettigheter som kan tildeles flere brukere. Brukeren kunde_1 ble opprettet og tildelt rollen kunde. Rollen har lesetilgang (SELECT) til tabellene stasjon, las og sykkel, men ikke direkte tilgang til utleie. Dette sikrer at kunder ikke kan se alle utleier i systemet.
 
 ---
 
@@ -351,12 +382,27 @@ ORDER BY table_name;
 **SQL for VIEW:**
 
 ```sql
-[Skriv din SQL-kode for VIEW her]
+CREATE TABLE IF NOT EXISTS kunde_login_map (
+  db_user  TEXT PRIMARY KEY,
+  kunde_id BIGINT NOT NULL REFERENCES kunde(kunde_id)
+);
+
+INSERT INTO kunde_login_map (db_user, kunde_id)
+VALUES ('kunde_1', 1)
+ON CONFLICT (db_user) DO UPDATE SET kunde_id = EXCLUDED.kunde_id;
+
+CREATE OR REPLACE VIEW v_mine_utleier AS
+SELECT u.*
+FROM utleie u
+JOIN kunde_login_map m ON m.kunde_id = u.kunde_id
+WHERE m.db_user = current_user;
+
+GRANT SELECT ON v_mine_utleier TO kunde;
 ```
 
 **Ulempe med VIEW vs. POLICIES:**
 
-[Skriv ditt svar her - diskuter minst én ulempe med å bruke VIEW for autorisasjon sammenlignet med POLICIES]
+En ulempe med å bruke VIEW for autorisasjon er at sikkerheten ligger i applikasjonslogikken og ikke direkte på radnivå i databasen. Dersom noen får direkte tilgang til tabellen utleie, vil VIEW-en ikke beskytte dataene. Med Row-Level Security (RLS) policies håndheves tilgangsreglene direkte av databasen på radnivå, noe som gir sterkere og mer robust sikkerhet.
 
 ---
 
@@ -372,15 +418,24 @@ ORDER BY table_name;
 
 **Totalt antall utleier per år:**
 
-[Skriv din utregning her]
+100000 + 20000 + 1500 = 121500 utleier
 
 **Estimat for lagringskapasitet:**
 
-[Skriv din utregning her - vis hvordan du har beregnet lagringskapasiteten for hver tabell]
+Jeg estimerer lagringsbehovet basert på tabellen utleie, siden det er den som vokser mest gjennom året. De andre tabellene (kunde, stasjon, las, sykkel, kunde_login_map) er relativt små og vil endres lite sammenlignet med antall utleier.
+
+En utleie-rad består hovedsakelig av flere BIGINT-felt (id-er), to TIMESTAMPTZ (tidspunkter) og et beløp (NUMERIC). Med overhead i PostgreSQL (rad-header, alignment og NULL-bitmap) estimerer jeg ca. 120 bytes per utleie.
+
+Dermed blir lagringsbehovet for selve utleie-tabellen:
+121500 utleier × 120 bytes ≈ 14 580 000 bytes ≈ 13,9 MiB
 
 **Totalt for første år:**
 
-[Skriv ditt estimat her]
+Utleie-data: ~13,9 MiB
+Indekser på utleie: ~8 MiB
+Andre tabeller + generell overhead: ~3–8 MiB
+
+Totalt estimat: ca. 25–30 MiB for første driftsår
 
 ---
 
@@ -390,31 +445,74 @@ ORDER BY table_name;
 
 **Problem 1: Redundans**
 
-[Skriv ditt svar her - gi konkrete eksempler fra CSV-filen som viser redundans]
+Ole Hansen med mobil +4791234567 og e-post ole.hansen@example.com forekommer på flere rader.
+
+Kari Olsen med mobil +4792345678 og e-post kari.olsen@example.com forekommer også flere ganger.
+
+Stasjonen "Sentrum Stasjon, Karl Johans gate 1 Oslo" gjentas på mange rader.
+
+Sykkelmodellen "City Bike Pro" forekommer flere ganger med samme innkjøpsdato.
 
 **Problem 2: Inkonsistens**
 
-[Skriv ditt svar her - forklar hvordan redundans kan føre til inkonsistens med eksempler]
+Hvis Ole Hansen bytter mobilnummer, må dette oppdateres på alle rader der han forekommer.
+
+Hvis én rad oppdateres, men ikke en annen, kan vi få to ulike mobilnumre for samme person.
+
+Hvis adressen til "Sentrum Stasjon" endres, må alle rader med denne stasjonen oppdateres manuelt.
 
 **Problem 3: Oppdateringsanomalier**
 
-[Skriv ditt svar her - diskuter slette-, innsettings- og oppdateringsanomalier]
+Oppdateringsanomalier
+
+Hvis Kari Olsen endrer e-postadresse, må alle rader hvor hun forekommer oppdateres. Hvis én rad glemmes, oppstår inkonsistens.
+
+Innsettingsanomalier
+
+Det er vanskelig å registrere en ny kunde uten at kunden samtidig har en utleie. CSV-filen beskriver kun utleier, ikke separate kunder eller sykler.
+
+Sletteanomalier
+
+Hvis vi sletter den eneste raden der for eksempel Anna Nilsen forekommer, mister vi samtidig all informasjon om henne.
 
 **Fordeler med en indeks:**
 
-[Skriv ditt svar her - forklar hvorfor en indeks ville gjort spørringen mer effektiv]
+En indeks på for eksempel epost, mobil eller sykkel_id gjør søk mye raskere.
+
+Uten indeks må databasen lese hele tabellen (full table scan).
+Med en indeks kan databasen raskt navigere til riktige rader.
 
 **Case 1: Indeks passer i RAM**
 
-[Skriv ditt svar her - forklar hvordan indeksen fungerer når den passer i minnet]
+Hvis indeksen får plass i RAM, kan databasen raskt slå opp verdier uten mange disktilganger. Dette gir svært raske søk.
 
 **Case 2: Indeks passer ikke i RAM**
 
-[Skriv ditt svar her - forklar hvordan flettesortering kan brukes]
+Hvis indeksen er større enn tilgjengelig minne, må deler av den leses fra disk. Det gir flere I/O-operasjoner, men er fortsatt raskere enn å lese hele tabellen.
+
+Ved veldig store datasett brukes teknikker som:
+
+buffering
+
+caching
+
+external merge sort (flettesortering)
 
 **Datastrukturer i DBMS:**
 
-[Skriv ditt svar her - diskuter B+-tre og hash-indekser]
+B+-tre
+
+Standard indeksstruktur i PostgreSQL
+
+Effektiv for både eksakte søk og intervallsøk
+
+Holder data sortert
+
+Hash-indeks
+
+Effektiv for eksakte oppslag (=)
+
+Ikke egnet for intervallsøk (<, >, BETWEEN)
 
 ---
 
@@ -422,17 +520,41 @@ ORDER BY table_name;
 
 **Foreslått datastruktur:**
 
-[Skriv ditt svar her - f.eks. heap-fil, LSM-tree, eller annen egnet datastruktur]
+Jeg foreslår å bruke en LSM-tree (Log-Structured Merge Tree) som datastruktur for logging.
 
 **Begrunnelse:**
 
+Et loggsystem kjennetegnes ofte av:
+- Svært mange skrive-operasjoner
+- Relativt få lese-operasjoner
+- Data som legges til sekvensielt
+  
+LSM-tree er spesielt godt egnet for slike arbeidsmengder.
+
 **Skrive-operasjoner:**
 
-[Skriv ditt svar her - forklar hvorfor datastrukturen er egnet for mange skrive-operasjoner]
+LSM-tree er optimalisert for mange skriveoperasjoner.
+
+Når nye data skrives:
+- De legges først i minne (memtable)
+- Deretter skrives de sekvensielt til disk
+- Mindre datasett flettes etter hvert sammen til større strukturer
+
+Fordeler:
+- Sekvensiell skriving er raskere enn tilfeldig skriving
+- Færre disk-oppdateringer
+- Høy skriveytelse
+
+Dette gjør LSM-tree svært egnet for systemer som genererer store mengder loggdata kontinuerlig.
 
 **Lese-operasjoner:**
 
-[Skriv ditt svar her - forklar hvordan datastrukturen håndterer sjeldne lese-operasjoner]
+Selv om lesing ikke er like rask som i et B+-tre, håndterer LSM-tree lesing ved:
+- Å sjekke memtable først (i RAM)
+- Deretter søke i diskstrukturer
+- Bruke bloom filters for å redusere unødvendige diskoppslag
+
+Siden loggsystemer typisk har mange flere skriver enn leser, er dette en god avveining.
 
 ---
 
@@ -440,23 +562,73 @@ ORDER BY table_name;
 
 **Hvor bør validering gjøres:**
 
-[Skriv ditt svar her - argumenter for validering i ett eller flere lag]
+Validering bør gjøres i flere lag i systemet, ikke bare ett.
+
+Den beste løsningen er å kombinere:
+- Validering i nettleseren (frontend)
+- Validering i applikasjonslaget (backend)
+- Validering i databasen
 
 **Validering i nettleseren:**
 
-[Skriv ditt svar her - diskuter fordeler og ulemper]
+Eksempler:
+- HTML5 required-felt
+- Regex for e-post
+- Maks/min-lengde på mobilnummer
+
+Fordeler:
+- Rask tilbakemelding til brukeren
+- Reduserer unødvendige kall til server
+- Bedre brukeropplevelse
+
+Ulemper:
+- Kan omgås (bruker kan manipulere forespørselen)
+- Ikke sikkert nok alene
 
 **Validering i applikasjonslaget:**
 
-[Skriv ditt svar her - diskuter fordeler og ulemper]
+Dette er backend-koden (f.eks. Node, Java, Python).
+
+Eksempler:
+- Sjekke at mobilnummer har riktig format
+- Kontrollere at beløp ≥ 0
+- Sjekke at innlevert_tid > utlevert_tid
+
+Fordeler:
+- Kan ikke omgås fra klienten
+- Sentralisert logikk
+- Kan gi tydelige feilmeldinger
+
+Ulemper:
+- Avhenger av korrekt implementasjon
+- Kan fortsatt feile hvis databasen ikke har egne constraints
 
 **Validering i databasen:**
 
-[Skriv ditt svar her - diskuter fordeler og ulemper]
+Dette inkluderer:
+- NOT NULL
+- CHECK-constraints
+- UNIQUE
+- FOREIGN KEY
+- PRIMARY KEY
+
+Fordeler:
+- Siste forsvarslinje
+- Garanterer dataintegritet
+- Beskytter mot feil uansett hvilken applikasjon som skriver til databasen
+
+Ulemper:
+- Gir mindre brukervennlige feilmeldinger
+- Kan ikke gi like detaljert logikk som applikasjonslaget
 
 **Konklusjon:**
 
-[Skriv ditt svar her - oppsummer hvor validering bør gjøres og hvorfor]
+Validering bør gjøres i alle tre lag:
+- Nettleseren for brukeropplevelse
+- Applikasjonslaget for logikk og sikkerhet
+- Databasen for å sikre dataintegritet
+
+Databasen bør alltid ha grunnleggende constraints, fordi dette garanterer at dataene er korrekte selv om applikasjonen inneholder feil.
 
 ---
 
@@ -464,21 +636,40 @@ ORDER BY table_name;
 
 **Hva har du lært så langt i emnet:**
 
-[Skriv din refleksjon her - diskuter sentrale konsepter du har lært]
+Jeg har lært hvordan man designer en relasjonsdatabase fra bunnen av. Jeg har fått bedre forståelse for begreper som primærnøkkel, fremmednøkkel, normalisering og dataintegritet.
+
+Jeg har også lært hvordan SQL brukes i praksis til å opprette tabeller, definere constraints og sette inn testdata. I tillegg har jeg fått innsikt i hvordan databaser håndterer lagring, indekser og ytelse.
 
 **Hvordan har denne oppgaven bidratt til å oppnå læringsmålene:**
 
-[Skriv din refleksjon her - koble oppgaven til læringsmålene i emnet]
+Denne oppgaven har vært viktig fordi den kombinerer teori og praksis.
+
+Jeg måtte først modellere systemet konseptuelt (ER-diagram), deretter implementere det i SQL, og til slutt teste det i en faktisk PostgreSQL-database ved hjelp av Docker.
+
+Oppgaven har gjort det tydelig hvordan datamodellering påvirker implementasjonen, og hvordan gode designvalg (som normalisering og constraints) sikrer korrekt og konsistent data.
 
 Se oversikt over læringsmålene i en PDF-fil i Canvas https://oslomet.instructure.com/courses/33293/files/folder/Plan%20v%C3%A5ren%202026?preview=4370886
 
 **Hva var mest utfordrende:**
 
-[Skriv din refleksjon her - diskuter hvilke deler av oppgaven som var mest krevende]
+Det mest utfordrende var å:
+- Få Docker og PostgreSQL til å fungere riktig
+- Forstå hvordan fremmednøkler og relasjoner henger sammen
+- Sørge for at databasen faktisk oppfyller 3NF
+
+Det krevde en del feilsøking og testing før alt fungerte som forventet.
 
 **Hva har du lært om databasedesign:**
 
-[Skriv din refleksjon her - reflekter over prosessen med å designe en database fra bunnen av]
+Jeg har lært at databasedesign handler om mer enn bare å lage tabeller.
+
+Man må:
+- Tenke gjennom relasjoner og kardinalitet
+- Unngå redundans
+- Sikre dataintegritet med constraints
+- Vurdere ytelse og indekser
+
+Jeg har også lært at god normalisering gjør systemet mer robust og reduserer risikoen for inkonsistent data.
 
 ---
 
