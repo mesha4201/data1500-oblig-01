@@ -1,10 +1,10 @@
 # Besvarelse - Refleksjon og Analyse
 
-**Student:** [Ditt navn]
+**Student:** Mehroz Shahzad
 
-**Studentnummer:** [Ditt studentnummer]
+**Studentnummer:** mesha4201
 
-**Dato:** [Innleveringsdato]
+**Dato:** 27.02.26
 
 ---
 
@@ -14,11 +14,47 @@
 
 **Identifiserte entiteter:**
 
-[Skriv ditt svar her - list opp alle entitetene du har identifisert]
+- Kunde
+- Stasjon
+- Lås
+- Sykkel
+- Utleie
 
 **Attributter for hver entitet:**
 
-[Skriv ditt svar her - list opp attributtene for hver entitet]
+Kunde:
+- kunde_id (primærnøkkel)
+- mobil
+- epost
+- fornavn
+- etternavn
+
+Stasjon:
+- stasjon_id (primærnøkkel)
+- navn
+- adresse
+- breddegrad
+- lengdegrad
+
+Lås:
+- las_id (primærnøkkel)
+- stasjon_id (fremmednøkkel)
+- lock_nr
+
+Sykkel:
+- sykkel_id (primærnøkkel)
+- tatt_i_bruk
+- las_id (fremmednøkkel, NULL når sykkelen er utleid)
+
+Utleie:
+- utleie_id (primærnøkkel)
+- kunde_id (fremmednøkkel)
+- sykkel_id (fremmednøkkel)
+- utlevert_tid
+- innlevert_tid (NULL dersom aktiv utleie)
+- beloep
+- utlevert_stasjon_id (fremmednøkkel)
+- innlevert_las_id (fremmednøkkel)
 
 ---
 
@@ -26,15 +62,68 @@
 
 **Valgte datatyper og begrunnelser:**
 
-[Skriv ditt svar her - forklar hvilke datatyper du har valgt for hver attributt og hvorfor]
+For primaernøkler har jeg brukt BIGSERIAL for å lage automatiske, unike ID-er.  
+Teksttyper som navn og adresse kalles TEXT.  
+For å gi landskode til mobilnummeret, brukes VARCHAR(15).  
+For å håndtere tidssoner riktig, er tidspunkter lagret som TIMESTAMPTZ.  
+For å forhindre avrundingsfeil er beløpet lagret som NUMERIC(10,2).
 
 **`CHECK`-constraints:**
 
-[Skriv ditt svar her - list opp alle CHECK-constraints du har lagt til og forklar hvorfor de er nødvendige]
+- Mobilnummeret må inneholde mellom 8 og 15 siffer.
+- E-poster må skrives i et enkelt format.
+- Summen må enten være større enn eller lik 0.
+- Innleveringsfristen kan ikke være før utleveringsfristen.
+- Lock_nr må overstige 0.
 
 **ER-diagram:**
 
-[Legg inn mermaid-kode eller eventuelt en bildefil fra `mermaid.live` her]
+```mermaid
+erDiagram
+
+    KUNDE {
+        BIGSERIAL kunde_id PK
+        VARCHAR mobil
+        TEXT epost
+        TEXT fornavn
+        TEXT etternavn
+    }
+
+    STASJON {
+        BIGSERIAL stasjon_id PK
+        TEXT navn
+        TEXT adresse
+        NUMERIC breddegrad
+        NUMERIC lengdegrad
+    }
+
+    LAS {
+        BIGSERIAL las_id PK
+        BIGINT stasjon_id FK
+        INTEGER lock_nr
+    }
+
+    SYKKEL {
+        BIGSERIAL sykkel_id PK
+        DATE tatt_i_bruk
+        BIGINT las_id FK
+    }
+
+    UTLEIE {
+        BIGSERIAL utleie_id PK
+        BIGINT kunde_id FK
+        BIGINT sykkel_id FK
+        TIMESTAMPTZ utlevert_tid
+        TIMESTAMPTZ innlevert_tid
+        NUMERIC beloep
+        BIGINT utlevert_stasjon_id FK
+        BIGINT innlevert_las_id FK
+    }
+
+    STASJON ||--o{ LAS : har
+    KUNDE ||--o{ UTLEIE : har
+    SYKKEL ||--o{ UTLEIE : brukes_i
+```
 
 ---
 
@@ -42,15 +131,61 @@
 
 **Valgte primærnøkler og begrunnelser:**
 
-[Skriv ditt svar her - forklar hvilke primærnøkler du har valgt for hver entitet og hvorfor]
+Jeg har bestemt meg for å bruke BIGSERIAL som primaernøkler for alle entiteter. Dette gir sikre identifikatorer som ikke vil endres hvis naturlige egenskaper som mobilnummer eller e-post endres.
 
 **Naturlige vs. surrogatnøkler:**
 
-[Skriv ditt svar her - diskuter om du har brukt naturlige eller surrogatnøkler og hvorfor]
+For eksempel kunne naturlige nøkler vært brukt til å registrere mobilnumre i kundetabellen, men surrogatnøkler er mer pålitelige fordi disse verdiene kan endres over tid.
 
 **Oppdatert ER-diagram:**
 
-[Legg inn mermaid-kode eller eventuelt en bildefil fra `mermaid.live` her]
+```mermaid
+erDiagram
+
+    KUNDE {
+        BIGSERIAL kunde_id PK
+        VARCHAR mobil
+        TEXT epost
+        TEXT fornavn
+        TEXT etternavn
+    }
+
+    STASJON {
+        BIGSERIAL stasjon_id PK
+        TEXT navn
+        TEXT adresse
+        NUMERIC breddegrad
+        NUMERIC lengdegrad
+    }
+
+    LAS {
+        BIGSERIAL las_id PK
+        BIGINT stasjon_id FK
+        INTEGER lock_nr
+    }
+
+    SYKKEL {
+        BIGSERIAL sykkel_id PK
+        DATE tatt_i_bruk
+        BIGINT las_id FK
+    }
+
+    UTLEIE {
+        BIGSERIAL utleie_id PK
+        BIGINT kunde_id FK
+        BIGINT sykkel_id FK
+        TIMESTAMPTZ utlevert_tid
+        TIMESTAMPTZ innlevert_tid
+        NUMERIC beloep
+        BIGINT utlevert_stasjon_id FK
+        BIGINT innlevert_las_id FK
+    }
+
+    STASJON ||--o{ LAS : har
+    LAS ||--o{ SYKKEL : inneholder
+    KUNDE ||--o{ UTLEIE : har
+    SYKKEL ||--o{ UTLEIE : brukes_i
+```
 
 ---
 
@@ -58,15 +193,70 @@
 
 **Identifiserte forhold og kardinalitet:**
 
-[Skriv ditt svar her - list opp alle forholdene mellom entitetene og angi kardinalitet]
+- En stasjon har en betydelig mengde låser (1:N)
+- En forbruker kan ha flere utleier (1:N)
+- Mange utleier kan bruke en sykkel (1:N)
+- Kun én sykkel kan holdes i en lås
 
 **Fremmednøkler:**
 
-[Skriv ditt svar her - list opp alle fremmednøklene og forklar hvordan de implementerer forholdene]
+- las.stasjon_id = stasjon.stasjon_id
+- sykkel.las_id = las.las_id
+- utleie.kunde_id = kunde.kunde_id
+- utleie.sykkel_id = sykkel.sykkel_id
+- utleie.utlevert_stasjon_id = stasjon.stasjon_id
+- utleie.innlevert_las_id = las.las_id
 
 **Oppdatert ER-diagram:**
 
-[Legg inn mermaid-kode eller eventuelt en bildefil fra `mermaid.live` her]
+```mermaid
+erDiagram
+    KUNDE {
+      BIGSERIAL kunde_id PK
+      VARCHAR mobil
+      TEXT epost
+      TEXT fornavn
+      TEXT etternavn
+    }
+
+    STASJON {
+      BIGSERIAL stasjon_id PK
+      TEXT navn
+      TEXT adresse
+      NUMERIC breddegrad
+      NUMERIC lengdegrad
+    }
+
+    LAS {
+      BIGSERIAL las_id PK
+      BIGINT stasjon_id FK
+      INTEGER lock_nr
+    }
+
+    SYKKEL {
+      BIGSERIAL sykkel_id PK
+      DATE tatt_i_bruk
+      BIGINT las_id FK
+    }
+
+    UTLEIE {
+      BIGSERIAL utleie_id PK
+      BIGINT kunde_id FK
+      BIGINT sykkel_id FK
+      TIMESTAMPTZ utlevert_tid
+      TIMESTAMPTZ innlevert_tid
+      NUMERIC beloep
+      BIGINT utlevert_stasjon_id FK
+      BIGINT innlevert_las_id FK
+    }
+
+    STASJON ||--o{ LAS : har
+    LAS ||--o{ SYKKEL : inneholder
+    KUNDE ||--o{ UTLEIE : har
+    SYKKEL ||--o{ UTLEIE : brukes_i
+    STASJON ||--o{ UTLEIE : utlevert_fra
+    LAS ||--o{ UTLEIE : innlevert_i
+```
 
 ---
 
@@ -74,19 +264,19 @@
 
 **Vurdering av 1. normalform (1NF):**
 
-[Skriv ditt svar her - forklar om datamodellen din tilfredsstiller 1NF og hvorfor]
+På grunn av det faktum at alle tabeller inneholder atomiske (udelte) verdier, tilfredsstiller datamodellen 1NF. Tabellene mangler gjentatte grupper og flerverdige attributter. En primaernøkkel brukes til å identifisere hver rad enkelt, og hvert attributt har bare én verdi per celle.
 
 **Vurdering av 2. normalform (2NF):**
 
-[Skriv ditt svar her - forklar om datamodellen din tilfredsstiller 2NF og hvorfor]
+Fordi hver tabell har en enkel primærnøkkel (ikke en sammensatt nøkkel), tilfredsstiller datamodellen 2NF. Som et resultat kan det ikke eksistere noen delvise avhengigheter. Alle ikke-nøkkelegenskaper er fullstendig funksjonelt avhengige av hele primærnøkkelen som finnes i hver tabell.
 
 **Vurdering av 3. normalform (3NF):**
 
-[Skriv ditt svar her - forklar om datamodellen din tilfredsstiller 3NF og hvorfor]
+Fordi det ikke finnes transitive avhengigheter, tilfredsstiller datamodellen 3NF. For eksempel er kundedata kun lagret i kundetabellen i stedet for i utleietabellen. Tilsvarende er Stasjon-tabellen den eneste kilden til informasjon om hver stasjon. I stedet for å lagre duplisert data refererer utleie til disse entitetene via fremmednøkler. Som et resultat er primærnøkkelen direkte avhengig av alle ikke-nøkkelegenskaper.
 
 **Eventuelle justeringer:**
 
-[Skriv ditt svar her - hvis modellen ikke var på 3NF, forklar hvilke justeringer du har gjort]
+Det var ikke nødvendig å gjøre justeringer for å oppnå 3NF, da datamodellen allerede oppfyller kravene til 1NF, 2NF og 3NF.
 
 ---
 
@@ -100,11 +290,11 @@
 
 **Antall testdata:**
 
-- Kunder: [antall]
-- Sykler: [antall]
-- Sykkelstasjoner: [antall]
-- Låser: [antall]
-- Utleier: [antall]
+- Kunder: 5
+- Sykler: 100
+- Sykkelstasjoner: 5
+- Låser: 100 (20 per stasjon)
+- Utleier: 50 (45 avsluttede + 5 aktive)
 
 ---
 
